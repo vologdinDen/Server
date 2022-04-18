@@ -5,7 +5,7 @@ import aiofiles
 import aiosqlite
 import shutil
 import os
-
+# curl -X DELETE http://127.0.0.1:8080/archive/1
 async def get_connection() -> aiosqlite.Connection:
     try:
         conn = await aiosqlite.connect("service_database.db")
@@ -70,7 +70,7 @@ async def post_handler(request: web.Request) -> web.json_response:
         await res.prepare(request)
         await res.write_eof()
         
-        asyncio.create_task(download_archive(url, id, conn))
+        asyncio.create_task(download_archive(url, id, conn), name=id)
         
         return res
     except Exception as e:
@@ -104,39 +104,35 @@ async def delete_handler(request: web.Request) -> web.Response:
         await cursor.execute(f"SELECT status, files FROM files_table WHERE id='{id}'")
         row = await cursor.fetchone()
 
-    if row:
-        response = web.json_response({"status": "deleted"})
-        await response.prepare(request)
-        await response.write_eof()
+        if row:
+            if row[0] != "ok":
+                for task in asyncio.all_tasks():
+                    if task.get_name() == id:
+                        task.cancel()
+                        break
+            
+            await cursor.execute(f"DELETE FROM files_table WHERE id={id}")
+            await conn.commit()
 
-        asyncio.create_task(delete_files(conn, id))
-        
-        return response
-    else:
-        return web.json_response({"error": "incroccect input"})
+            shutil.rmtree(f"files/{id}")
 
-async def delete_files(conn: aiosqlite.Connection, id: str):
-    async with conn.cursor() as cursor:
-        await cursor.execute(f"SELECT status, files FROM files_table WHERE id='{id}'")
-        row = await cursor.fetchone()
+            response = web.json_response({"status": "deleted"})
+            await response.prepare(request)
+            await response.write_eof()
 
-        while row[0] != "ok":
-            await asyncio.sleep(3)
-            await cursor.execute(f"SELECT status, files FROM files_table WHERE id='{id}'")
-            row = await cursor.fetchone()
+            # asyncio.create_task(delete_files(conn, id))
+            
+            return response
+        else:
+            return web.json_response({"error": "incroccect input"})
 
-        await cursor.execute(f"DELETE FROM files_table WHERE id={id}")
-        await conn.commit()
-
-    shutil.rmtree(f"files/{id}")
-    
 
 async def main(app: web.Application):
     print("Starting http service!")
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host='0.0.0.0', port=8080)
+    site = web.TCPSite(runner, host='127.0.0.1', port=8080)
     await site.start()
 
     await asyncio.Event().wait() 
