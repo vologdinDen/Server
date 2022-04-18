@@ -5,7 +5,7 @@ import aiofiles
 import aiosqlite
 import shutil
 import os
-# curl -X DELETE http://127.0.0.1:8080/archive/1
+
 async def get_connection() -> aiosqlite.Connection:
     try:
         conn = await aiosqlite.connect("service_database.db")
@@ -119,8 +119,6 @@ async def delete_handler(request: web.Request) -> web.Response:
             response = web.json_response({"status": "deleted"})
             await response.prepare(request)
             await response.write_eof()
-
-            # asyncio.create_task(delete_files(conn, id))
             
             return response
         else:
@@ -132,7 +130,7 @@ async def main(app: web.Application):
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host='127.0.0.1', port=8080)
+    site = web.TCPSite(runner, host='0.0.0.0', port=8080)
     await site.start()
 
     await asyncio.Event().wait() 
